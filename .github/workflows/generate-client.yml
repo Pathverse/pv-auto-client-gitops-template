@@ -56,14 +56,15 @@ jobs:
             echo "Changes detected"
           fi
       
-      - name: Commit changes
+      - name: Commit and push to main
         if: steps.check_changes.outputs.has_changes == 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git commit -m "chore: regenerate API client from Postman collection"
+          git push origin ${{ github.event.inputs.target_branch || 'main' }}
       
-      - name: Create date-based branch
+      - name: Create date-based mirror branch
         if: steps.check_changes.outputs.has_changes == 'true'
         run: |
           DATE_BRANCH="generated-$(date +'%Y-%m-%d')"
@@ -78,30 +79,4 @@ jobs:
           
           echo "BRANCH_NAME=$BRANCH_NAME" >> $GITHUB_ENV
           git checkout -b "$BRANCH_NAME"
-      
-      - name: Push changes
-        if: steps.check_changes.outputs.has_changes == 'true'
-        run: |
-          git push origin ${{ env.BRANCH_NAME }}
-      
-      - name: Create Pull Request
-        if: steps.check_changes.outputs.has_changes == 'true'
-        uses: peter-evans/create-pull-request@v6
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          branch: ${{ env.BRANCH_NAME }}
-          base: ${{ github.event.inputs.target_branch || 'main' }}
-          title: "API Client Update - ${{ env.BRANCH_NAME }}"
-          body: |
-            ## API Client Regeneration
-            
-            This PR contains automatically generated API client code from the Postman collection.
-            
-            **Generated on:** $(date +'%Y-%m-%d %H:%M:%S UTC')
-            **Branch:** ${{ env.BRANCH_NAME }}
-            
-            ### Changes
-            - Regenerated Chopper client from latest Postman collection
-            - Updated API specifications
-            
-            Please review the changes before merging.
+          git push origin "$BRANCH_NAME"
