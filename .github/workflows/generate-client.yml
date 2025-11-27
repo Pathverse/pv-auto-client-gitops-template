@@ -63,6 +63,31 @@ jobs:
             ${{ github.event.inputs.overwrite_build == 'true' && '--overwrite-build' || '' }} \
             --delete-conflicting
       
+      - name: Clean up empty model part directives
+        run: |
+          # Find all .dart files in lib/ that contain part directives
+          find lib -name "*.dart" -type f | while read -r dart_file; do
+            # Extract part directives from the file
+            grep "^part '[^']*\.g\.dart';" "$dart_file" 2>/dev/null | while read -r part_line; do
+              # Extract the .g.dart filename from the part directive
+              g_file=$(echo "$part_line" | sed -n "s/^part '\([^']*\)';$/\1/p")
+              
+              if [ -n "$g_file" ]; then
+                # Get the directory of the current dart file
+                dart_dir=$(dirname "$dart_file")
+                g_file_path="$dart_dir/$g_file"
+                
+                # Check if .g.dart file doesn't exist or is empty
+                if [ ! -f "$g_file_path" ] || [ ! -s "$g_file_path" ]; then
+                  echo "Removing part directive from $dart_file (generated file $g_file_path missing or empty)"
+                  # Escape special characters for sed
+                  escaped_line=$(echo "$part_line" | sed 's/[\/&]/\\&/g')
+                  sed -i "/^${escaped_line}$/d" "$dart_file"
+                fi
+              fi
+            done
+          done
+      
       - name: Check for changes
         id: check_changes
         run: |
