@@ -7,6 +7,15 @@ on:
         description: 'Target branch to update'
         required: false
         default: 'main'
+      tool_branch:
+        description: 'pv-auto-client branch/tag to use'
+        required: false
+        default: 'main'
+      overwrite_build:
+        description: 'Overwrite existing build.yaml'
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   generate:
@@ -24,11 +33,20 @@ jobs:
         with:
           sdk: stable
       
-      - name: Clone pv-auto-client
+      - name: Cache Dart packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.pub-cache
+          key: ${{ runner.os }}-dart-${{ hashFiles('**/pubspec.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-dart-
+      
+      - name: Install pv-auto-client
         run: |
-          git clone https://github.com/Pathverse/pv-auto-client.git /tmp/pv-auto-client
-          cd /tmp/pv-auto-client
-          dart pub get
+          dart pub global activate --source git https://github.com/Pathverse/pv-auto-client.git \
+            --git-ref ${{ github.event.inputs.tool_branch || 'main' }} \
+            --overwrite
       
       - name: Create .env file
         run: |
@@ -39,9 +57,10 @@ jobs:
       
       - name: Run pv-auto-client
         run: |
-          cd /tmp/pv-auto-client
-          dart run bin/pv_auto_client.dart auto \
+          pv_auto_client auto \
             --target ${{ github.workspace }} \
+            --overwrite-dependencies \
+            ${{ github.event.inputs.overwrite_build == 'true' && '--overwrite-build' || '' }} \
             --delete-conflicting
       
       - name: Check for changes

@@ -24,7 +24,9 @@ Your repository should be a Dart/Flutter project with:
 1. Go to Actions tab
 2. Select "Generate API Client" workflow
 3. Click "Run workflow"
-4. Optionally specify target branch (default: main)
+4. Optional inputs:
+   - **target_branch**: Branch to update (default: main)
+   - **tool_branch**: pv-auto-client version to use (default: main)
 
 ### API Trigger
 
@@ -36,7 +38,7 @@ curl -X POST \
   -H "Authorization: Bearer YOUR_GITHUB_TOKEN" \
   -H "X-GitHub-Api-Version: 2022-11-28" \
   https://api.github.com/repos/OWNER/REPO/actions/workflows/generate-client.yml/dispatches \
-  -d '{"ref":"main","inputs":{"target_branch":"main"}}'
+  -d '{"ref":"main","inputs":{"target_branch":"main","tool_branch":"main"}}'
 ```
 
 **Requirements:**
@@ -56,6 +58,7 @@ $body = @{
     ref = "main"
     inputs = @{
         target_branch = "main"
+        tool_branch = "main"
     }
 } | ConvertTo-Json
 
@@ -71,13 +74,16 @@ You can trigger this from:
 
 ### What It Does
 
-1. Checks out your repository
-2. Sets up Dart SDK
-3. Clones and runs pv-auto-client tool
-4. Generates API client from Postman collection
-5. Commits changes if any
-6. Creates a new branch with format: `generated-YYYY-MM-DD`
-7. Pushes branch and creates a Pull Request
+1. Checks out your repository (target branch)
+2. Sets up Dart SDK with package caching
+3. Installs pv-auto-client globally from Git
+4. Creates .env with Postman credentials
+5. Runs pv-auto-client with:
+   - `--overwrite-dependencies` (ensure deps up to date)
+   - `--overwrite-build` (refresh build.yaml)
+   - `--delete-conflicting` (clean generation)
+6. Commits changes directly to target branch (if any)
+7. Creates date-based mirror branch: `generated-YYYY-MM-DD`
 
 ### Branch Naming
 
