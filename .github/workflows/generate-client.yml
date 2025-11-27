@@ -1,0 +1,107 @@
+name: Generate API Client
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_branch:
+        description: 'Target branch to update'
+        required: false
+        default: 'main'
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.target_branch || 'main' }}
+          fetch-depth: 0
+      
+      - name: Setup Dart SDK
+        uses: dart-lang/setup-dart@v1
+        with:
+          sdk: stable
+      
+      - name: Clone pv-auto-client
+        run: |
+          git clone https://github.com/Pathverse/pv-auto-client.git /tmp/pv-auto-client
+          cd /tmp/pv-auto-client
+          dart pub get
+      
+      - name: Create .env file
+        run: |
+          cat > .env << EOF
+          XAPIKEY=${{ secrets.POSTMAN_API_KEY }}
+          XCOID=${{ secrets.POSTMAN_COLLECTION_UID }}
+          EOF
+      
+      - name: Run pv-auto-client
+        run: |
+          cd /tmp/pv-auto-client
+          dart run bin/pv_auto_client.dart auto \
+            --target ${{ github.workspace }} \
+            --delete-conflicting
+      
+      - name: Check for changes
+        id: check_changes
+        run: |
+          git add -A
+          if git diff --staged --quiet; then
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+            echo "No changes detected"
+          else
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+            echo "Changes detected"
+          fi
+      
+      - name: Commit changes
+        if: steps.check_changes.outputs.has_changes == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore: regenerate API client from Postman collection"
+      
+      - name: Create date-based branch
+        if: steps.check_changes.outputs.has_changes == 'true'
+        run: |
+          DATE_BRANCH="generated-$(date +'%Y-%m-%d')"
+          COUNTER=1
+          BRANCH_NAME="$DATE_BRANCH"
+          
+          # Check if branch exists and increment counter if needed
+          while git ls-remote --heads origin "$BRANCH_NAME" | grep -q "$BRANCH_NAME"; do
+            BRANCH_NAME="${DATE_BRANCH}-${COUNTER}"
+            COUNTER=$((COUNTER + 1))
+          done
+          
+          echo "BRANCH_NAME=$BRANCH_NAME" >> $GITHUB_ENV
+          git checkout -b "$BRANCH_NAME"
+      
+      - name: Push changes
+        if: steps.check_changes.outputs.has_changes == 'true'
+        run: |
+          git push origin ${{ env.BRANCH_NAME }}
+      
+      - name: Create Pull Request
+        if: steps.check_changes.outputs.has_changes == 'true'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: ${{ env.BRANCH_NAME }}
+          base: ${{ github.event.inputs.target_branch || 'main' }}
+          title: "API Client Update - ${{ env.BRANCH_NAME }}"
+          body: |
+            ## API Client Regeneration
+            
+            This PR contains automatically generated API client code from the Postman collection.
+            
+            **Generated on:** $(date +'%Y-%m-%d %H:%M:%S UTC')
+            **Branch:** ${{ env.BRANCH_NAME }}
+            
+            ### Changes
+            - Regenerated Chopper client from latest Postman collection
+            - Updated API specifications
+            
+            Please review the changes before merging.
